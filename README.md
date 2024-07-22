@@ -24,7 +24,7 @@ pip install git+https://github.com/marcocamma/sens4.git
 ```py
 from sens4 import Sensor
 
-s = Sensor("/dev/ttyUSB0") # the the right port !
+s = Sensor("/dev/ttyUSB0") # use the right port !
 s.read_temperature()
 s.read_pressure()
 s.set_pressure_unit("mbar")
