@@ -1,5 +1,8 @@
 import serial
+import pathlib
+import time
 from time import sleep
+import datetime
 
 
 BAUDRATES = [4_800, 9_600, 19_000, 38_400, 57_600, 115_200]
@@ -8,6 +11,8 @@ UNITS_T = "CELSIUS", "FAHRENHEIT", "KELVIN"
 TIME_BEFORE_QUERY = 0.05
 
 DEBUG = False
+
+FOLDER = pathlib.Path(__file__).parent
 
 
 def write(connection, sensor=254, command="MD", command_par=None, value=None):
@@ -68,10 +73,6 @@ class Sensor:
         self.connection = None
         self.baudrate = self.find_baudrate()
         self.connection = self._connect(self.baudrate)
-        try:
-            self.set_baudrate(115_200)
-        except Exception:
-            print("Failed to set high speed baudrate")
         self.pressure_unit = self.query("U", command_par="P").lower()
         self.temperature_unit = self.query("U", command_par="T").lower()
         self.model = self.query("MD")
@@ -114,10 +115,11 @@ class Sensor:
             self.query("MD")
         except Exception:
             pass
-        if baudrate == 115_200:
-            globals()["TIME_BEFORE_QUERY"] = 0.02
-        else:
-            globals()["TIME_BEFORE_QUERY"] = 0.05
+
+    #        if baudrate == 115_200:
+    #            globals()["TIME_BEFORE_QUERY"] = 0.02
+    #        else:
+    #            globals()["TIME_BEFORE_QUERY"] = 0.05
 
     def set_pressure_unit(self, value):
         if value.upper() not in UNITS_P:
@@ -154,3 +156,45 @@ class Sensor:
 
     def __repr__(self):
         return self.__str__()
+
+
+def display_and_record(dt_display=1, dt_saving=10):
+    s = Sensor()
+    t_last_save = 0
+    folder = FOLDER / "data"
+    folder.mkdir(exist_ok=True)
+    P = []
+    T = []
+    while True:
+        t0 = time.time()
+        pressure = s.read_pressure()
+        temperature = s.read_temperature()
+        P.append(pressure)
+        T.append(temperature)
+        print(f"{datetime.datetime.now()} {pressure} {temperature}")
+        if time.time() - t_last_save > dt_saving:
+            today_string = datetime.datetime.today().strftime("%Y%m%d")
+            fname = folder / f"{today_string}.txt"
+            # check if new file, add header
+            if not fname.is_file():
+                with open(fname, "w") as f:
+                    print(f"Recording in file {fname}")
+                    f.write(f"# time P({s.pressure_unit}) T({s.temperature_unit})")
+                    f.write(f"# {s}")  # to have name of device and port
+            with open(fname, "a") as f:
+                time_string = datetime.datetime.now().strftime("%H%M%S")
+                pressure = sum(P) / len(P)
+                temperature = sum(T) / len(T)
+                str_to_write = f"\n{time_string} {pressure:8.3e} {temperature:6.3f}"
+                print(f"writing {str_to_write[1:]} to file")
+                f.write(str_to_write)
+                t_last_save = time.time()
+                P = []
+                T = []
+        wait_time = dt_display - (time.time() - t0)
+        if wait_time > 0:
+            time.sleep(wait_time)
+
+
+if __name__ == "__main__":
+    display_and_record()
