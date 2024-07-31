@@ -158,7 +158,7 @@ class Sensor:
         return self.__str__()
 
 
-def display_and_record(dt_display=1, dt_saving=10):
+def display_and_record(port="/dev/ttyUSB0", dt_display=1, dt_saving=10):
     s = Sensor()
     t_last_save = 0
     folder = FOLDER / "data"
@@ -197,4 +197,10 @@ def display_and_record(dt_display=1, dt_saving=10):
 
 
 if __name__ == "__main__":
-    display_and_record()
+    import sys
+
+    print("usage python sens4.py port time_between_reads time_between_saving")
+    port = "/dev/ttyUSB0" if len(sys.argv) < 2 else sys.argv[1]
+    dt_display = 1 if len(sys.argv) < 3 else float(sys.argv[2])
+    dt_saving = 10 if len(sys.argv) < 4 else float(sys.argv[3])
+    display_and_record(port=port, dt_display=dt_display, dt_saving=dt_saving)
