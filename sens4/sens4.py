@@ -3,16 +3,39 @@ import pathlib
 import time
 from time import sleep
 import datetime
+import socket
 
 
 BAUDRATES = [4_800, 9_600, 19_000, 38_400, 57_600, 115_200]
 UNITS_P = "MBAR", "PASCAL", "TORR"
 UNITS_T = "CELSIUS", "FAHRENHEIT", "KELVIN"
-TIME_BEFORE_QUERY = 0.05
+TIME_BEFORE_QUERY = 0.5
 
 DEBUG = False
 
 FOLDER = pathlib.Path(__file__).parent
+
+
+class SocketConnection:
+    def __init__(self, host="129.20.76.100", port=9002):
+        port = int(port) # in case a string is passed
+        self.host = host
+        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.s.connect((host, port))
+        self.s.settimeout(5)
+        self.f = self.s.makefile("rb")
+
+    def write(self, msg):
+        if DEBUG:
+            print("Writing", msg)
+        self.s.send(msg)
+
+    def read_all(self):
+        """
+        Return a message from the scope.
+        """
+        reply = self.s.recv(1024)
+        return reply
 
 
 def write(connection, sensor=254, command="MD", command_par=None, value=None):
@@ -32,8 +55,8 @@ def write(connection, sensor=254, command="MD", command_par=None, value=None):
 
 
 def read(connection, cast=None):
-    buffer = connection.read_all()
-    s = buffer.decode("ascii")
+    data = connection.read_all()
+    s = data.decode("ascii")
     if DEBUG:
         print(f"read: {s}")
     if s == "":
@@ -68,11 +91,19 @@ def setvalue(connection, command=None, command_par=None, value=None, sensor=254)
 
 
 class Sensor:
-    def __init__(self, port="/dev/ttyUSB0"):
-        self.port = port
-        self.connection = None
-        self.baudrate = self.find_baudrate()
-        self.connection = self._connect(self.baudrate)
+    def __init__(self, port="/dev/ttyUSB0", host=None):
+        # if host is not None, it is assumed to be connected to a serial/ethernet box
+        # such as a Brainbox
+        if host is None:
+            self.port = port
+            self.connection = None
+            self.baudrate = self.find_baudrate()
+            self.connection = self._connect(self.baudrate)
+            self._connection_string = port
+        else:
+            self.connection = SocketConnection(host=host, port=port)
+            self.port = port
+            self._connection_string = f"{host}:{port}"
         self.pressure_unit = self.query("U", command_par="P").lower()
         self.temperature_unit = self.query("U", command_par="T").lower()
         self.model = self.query("MD")
@@ -152,14 +183,14 @@ class Sensor:
     def __str__(self):
         P = self.read_pressure()
         T = self.read_temperature()
-        return f"{self.model} (@ {self.port}), P = {P} {self.pressure_unit}, T = {T} {self.temperature_unit}"
+        return f"{self.model} (@ {self._connection_string}), P = {P} {self.pressure_unit}, T = {T} {self.temperature_unit}"
 
     def __repr__(self):
         return self.__str__()
 
 
-def display_and_record(port="/dev/ttyUSB0", dt_display=1, dt_saving=10):
-    s = Sensor()
+def display_and_record(port="/dev/ttyUSB0", host=None,dt_display=1, dt_saving=10):
+    s = Sensor(host=host,port=port)
     t_last_save = 0
     folder = FOLDER / "data"
     folder.mkdir(exist_ok=True)
@@ -201,6 +232,10 @@ if __name__ == "__main__":
 
     print("usage python sens4.py port time_between_reads time_between_saving")
     port = "/dev/ttyUSB0" if len(sys.argv) < 2 else sys.argv[1]
+    if port.find(",") > 0:
+        host,port = port.split(",")
+    else:
+        host = None
     dt_display = 1 if len(sys.argv) < 3 else float(sys.argv[2])
     dt_saving = 10 if len(sys.argv) < 4 else float(sys.argv[3])
-    display_and_record(port=port, dt_display=dt_display, dt_saving=dt_saving)
+    display_and_record(host=host, port=port, dt_display=dt_display, dt_saving=dt_saving)
